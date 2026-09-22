@@ -7,7 +7,7 @@
 // never show up until something forced a full re-fetch, which is exactly
 // the "have to delete and re-add the icon" symptom this fixes.
 
-const CACHE_NAME = "yees-money-github-pages-touch-fix-v1";
+const CACHE_NAME = "yees-money-github-crop-stockfix-v2";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
