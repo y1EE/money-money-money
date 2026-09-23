@@ -15,5 +15,20 @@
   </head>
   <body>
     <div id="root"></div>
-  </body>
+  <script>
+(function(){
+  if(!("serviceWorker" in navigator)) return;
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener("controllerchange",function(){
+    if(refreshing) return;
+    refreshing=true;
+    location.reload();
+  });
+  window.addEventListener("load",function(){
+    navigator.serviceWorker.getRegistration().then(function(reg){
+      if(reg) reg.update();
+    });
+  });
+})();
+</script></body>
 </html>
