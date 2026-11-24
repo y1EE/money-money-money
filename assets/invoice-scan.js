@@ -3,18 +3,29 @@
 var LS_S="yees_inv_sellers",LS_N="yees_inv_nos";
 function ld(k){try{return JSON.parse(localStorage.getItem(k)||"{}")||{}}catch(e){return{}}}
 function sv(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function dec(f,enc){
+  try{
+    var b;
+    if(enc==="2"){var bin=atob(f);b=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i)}
+    else{b=new Uint8Array(f.length);for(var j=0;j<f.length;j++)b[j]=f.charCodeAt(j)&255}
+    var t=new TextDecoder(enc==="0"?"big5":"utf-8").decode(b);
+    return /[\u0000-\u0008�]/.test(t)?"":t.trim();
+  }catch(e){return""}
+}
+function items(p,from,enc){var out=[];for(var i=from;i+2<p.length+0&&i<p.length;i+=3){var nm=dec(p[i],enc);if(nm)out.push({name:nm,qty:parseFloat(p[i+1])||1,price:parseFloat(p[i+2])||0})}return out}
 function parse(s){
   s=String(s||"");
   if(!/^[A-Z]{2}\d{8}\d{7}[0-9A-Za-z]{4}[0-9A-Fa-f]{16}/.test(s)||s.length<77)return null;
   var no=s.slice(0,10),roc=s.slice(10,17),y=parseInt(roc.slice(0,3),10)+1911;
   var date=y+"-"+roc.slice(3,5)+"-"+roc.slice(5,7);
-  var total=parseInt(s.slice(29,37),16),seller=s.slice(45,53),items=[];
-  var rest=s.slice(77),p=rest.split(":");
-  // p: ["", selfuse, n1, n2, enc, name, qty, price, ...]
-  if(p.length>=6){var enc=p[4];for(var i=5;i+2<p.length+0&&i<p.length;i+=3){
-    var nm=p[i];if(enc==="2"){try{nm=decodeURIComponent(escape(atob(nm)))}catch(e){nm=""}}
-    if(nm&&!/[\u0000-\u0008�]/.test(nm))items.push({name:nm,qty:parseFloat(p[i+1])||1,price:parseFloat(p[i+2])||0});}}
-  return{no:no,date:date,total:total,seller:seller,items:items};
+  var total=parseInt(s.slice(29,37),16),seller=s.slice(45,53);
+  var p=s.slice(77).split(":"),enc=p[4]||"1";
+  return{no:no,date:date,total:total,seller:seller,enc:enc,itemTotal:parseInt(p[3],10)||0,items:p.length>=6?items(p,5,enc):[]};
+}
+function parseRight(s,enc){
+  s=String(s||"");if(s.slice(0,2)!=="**")return null;
+  var p=s.slice(2).split(":");if(p[0]==="")p.shift();
+  return items(p,0,enc||"1");
 }
 var KW=[["transport",/加油|中油|台塑|停車|高鐵|台鐵|捷運|客運|計程|uber|悠遊|交通|汽油|柴油|95無鉛|92無鉛/i],
 ["food",/餐|飲|咖啡|茶|麵|飯|便當|麵包|早餐|超商|全家|統一超商|萊爾富|麥當勞|星巴克|飯店|火鍋|燒肉|拉麵|飲料|豆漿|牛奶|雞|豬|牛|魚|蛋|麵食|小吃|食品|烘焙|蛋糕|手搖/],
@@ -49,21 +60,37 @@ function resolve(r){
 function overlay(cb){
   var stream=null,stop=false,box=document.createElement("div");
   box.style.cssText="position:fixed;inset:0;z-index:99999;background:#000;display:flex;flex-direction:column";
-  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;color:#fff;font-size:15px"><button id="isc-x" style="color:#fff;font-size:16px">取消</button><span>掃描電子發票左側 QR 碼</span><label style="color:#7db7ff;font-size:15px">相簿<input id="isc-f" type="file" accept="image/*" style="display:none"></label></div><div style="flex:1;position:relative;overflow:hidden"><video id="isc-v" playsinline muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;left:50%;top:50%;width:62%;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid rgba(255,255,255,.85);border-radius:18px"></div></div><div id="isc-m" style="color:#ddd;font-size:13px;text-align:center;padding:12px 16px calc(env(safe-area-inset-bottom) + 16px)">請把發票左邊的 QR 碼放進框內</div>';
+  box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;color:#fff;font-size:15px"><button id="isc-x" style="color:#fff;font-size:16px">取消</button><span>掃描電子發票 QR 碼</span><label style="color:#7db7ff;font-size:15px">相簿<input id="isc-f" type="file" accept="image/*" style="display:none"></label></div><div style="flex:1;position:relative;overflow:hidden"><video id="isc-v" playsinline muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;left:50%;top:50%;width:62%;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid rgba(255,255,255,.85);border-radius:18px"></div></div><div style="text-align:center"><button id="isc-d" style="display:none;color:#7db7ff;font-size:16px;padding:8px 20px">完成</button></div><div id="isc-m" style="color:#ddd;font-size:13px;text-align:center;padding:12px 16px calc(env(safe-area-inset-bottom) + 16px)">請把發票左邊的 QR 碼放進框內</div>';
   document.body.appendChild(box);
-  var v=box.querySelector("#isc-v"),m=box.querySelector("#isc-m"),cv=document.createElement("canvas"),cx=cv.getContext("2d",{willReadFrequently:true});
+  var fin0=null,v=box.querySelector("#isc-v"),m=box.querySelector("#isc-m"),cv=document.createElement("canvas"),cx=cv.getContext("2d",{willReadFrequently:true});
   function close(){stop=true;try{stream&&stream.getTracks().forEach(function(t){t.stop()})}catch(e){}box.remove()}
-  function tryImg(w,h,src){cv.width=w;cv.height=h;cx.drawImage(src,0,0,w,h);var d=cx.getImageData(0,0,w,h);var q=window.jsQR(d.data,w,h,{inversionAttempts:"attemptBoth"});return q&&q.data}
-  function got(txt){var r=parse(txt);if(!r)return false;close();cb(r);return true}
-  box.querySelector("#isc-x").onclick=close;
+  function tryImg(w,h,src){cv.width=w;cv.height=h;cx.drawImage(src,0,0,w,h);var d=cx.getImageData(0,0,w,h);var q=window.jsQR(d.data,w,h,{inversionAttempts:"attemptBoth"});if(!q)return null;try{if(q.binaryData&&q.binaryData.length){var o="";for(var i=0;i<q.binaryData.length;i++)o+=String.fromCharCode(q.binaryData[i]);return o}}catch(e){}return q.data}
+  var left=null,fin=box.querySelector("#isc-d");
+  function finish(){close();cb(left)}
+  function got(txt){
+    if(!left){var r=parse(txt);if(!r)return false;left=r;
+      if(r.itemTotal>r.items.length){m.textContent="已讀到左側。還有 "+(r.itemTotal-r.items.length)+" 項品項在右側 QR 碼，請再掃右邊那顆，或點「完成」略過";fin.style.display="inline";return false}
+      finish();return true}
+    var it=parseRight(txt,left.enc);if(!it)return false;left.items=left.items.concat(it);finish();return true}
+  box.querySelector("#isc-x").onclick=close;fin.onclick=function(){left&&finish()};
   box.querySelector("#isc-f").onchange=function(e){var f=e.target.files&&e.target.files[0];if(!f)return;var im=new Image();im.onload=function(){
     var sc=Math.min(1,1600/Math.max(im.width,im.height)),t=tryImg(Math.round(im.width*sc),Math.round(im.height*sc),im);
-    if(!(t&&got(t)))m.textContent="照片中找不到發票左側 QR 碼，請換一張更清楚的";};im.src=URL.createObjectURL(f)};
+    if(!(t&&got(t))&&!left)m.textContent="照片中找不到發票 QR 碼，請換一張更清楚的";};im.src=URL.createObjectURL(f)};
   function loop(){if(stop)return;if(v.readyState>=2&&v.videoWidth){var s=Math.min(1,900/v.videoWidth),w=Math.round(v.videoWidth*s),h=Math.round(v.videoHeight*s);var t=tryImg(w,h,v);if(t&&got(t))return}setTimeout(function(){requestAnimationFrame(loop)},120)}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){m.textContent="這個瀏覽器無法開啟相機，請改用右上角「相簿」選照片"}
   else navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280}},audio:false}).then(function(s){stream=s;v.srcObject=s;v.play();loop()}).catch(function(){m.textContent="無法使用相機（請到設定允許相機），可改用右上角「相簿」選照片"});
 }
-window.InvScan={
+function note(r){var l=[r.name||("統編 "+r.seller)];(r.items||[]).forEach(function(x){l.push(x.name+(x.qty>1?" ×"+x.qty:""))});return l.join("\n")}
+function choice(date,onManual,onScan){
+  var d=document.createElement("div");d.style.cssText="position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center";
+  var dark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,bg=dark?"#2c2c2e":"#fff",fg=dark?"#fff":"#111",sep=dark?"#444":"#e5e5ea";
+  d.innerHTML='<div style="width:100%;max-width:480px;padding:12px 12px calc(env(safe-area-inset-bottom) + 12px)"><div style="background:'+bg+';border-radius:16px;overflow:hidden"><button id="ac-m" style="width:100%;padding:16px;font-size:16px;color:'+fg+';border-bottom:0.5px solid '+sep+'">手動輸入</button><button id="ac-s" style="width:100%;padding:16px;font-size:16px;color:'+fg+'">掃描發票</button></div><button id="ac-c" style="width:100%;margin-top:8px;padding:16px;font-size:16px;font-weight:600;background:'+bg+';color:#007aff;border-radius:16px">取消</button></div>';
+  document.body.appendChild(d);
+  function x(){d.remove()}
+  d.onclick=function(e){if(e.target===d)x()};
+  d.querySelector("#ac-c").onclick=x;d.querySelector("#ac-m").onclick=function(){x();onManual()};d.querySelector("#ac-s").onclick=function(){x();onScan()};
+}
+window.InvScan={note:note,choice:choice,
   parse:parse,
   open:function(cb){overlay(function(r){var seen=ld(LS_N);if(seen[r.no]&&!window.confirm("發票 "+r.no+" 已經記過了，仍要繼續嗎？"))return;resolve(r).then(cb)})},
   learn:function(s,cat,sub){if(!s||!s.seller)return;var a=ld(LS_S);a[s.seller]=Object.assign({},a[s.seller],{cat:cat||null,sub:sub||null});sv(LS_S,a);var n=ld(LS_N);if(s.no){n[s.no]=1;sv(LS_N,n)}}
