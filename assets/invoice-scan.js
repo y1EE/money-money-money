@@ -80,7 +80,7 @@ function overlay(cb){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){m.textContent="這個瀏覽器無法開啟相機，請改用右上角「相簿」選照片"}
   else navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280}},audio:false}).then(function(s){stream=s;v.srcObject=s;v.play();loop()}).catch(function(){m.textContent="無法使用相機（請到設定允許相機），可改用右上角「相簿」選照片"});
 }
-function note(r){var l=[r.name||("統編 "+r.seller)];(r.items||[]).forEach(function(x){l.push(x.name+(x.qty>1?" ×"+x.qty:""))});return l.join("\n")}
+function note(r){var f=function(v){return Math.round(v*100)/100},l=[(r.name||("統編 "+r.seller))+(r.total>0?" $"+f(r.total):"")];(r.items||[]).forEach(function(x){var amt=f((x.qty||1)*(x.price||0));l.push(x.name+(x.qty>1?" ×"+x.qty:"")+(amt>0?" $"+amt:""))});return l.join("\n")}
 var lastBtn=null;
 document.addEventListener("pointerdown",function(e){var b=e.target&&e.target.closest&&e.target.closest("button");lastBtn=b?b.getBoundingClientRect():null},true);
 function choice(date,onManual,onScan){
@@ -100,9 +100,51 @@ function choice(date,onManual,onScan){
   d.onclick=function(e){if(e.target===d)x()};
   d.querySelector("#ac-m").onclick=function(){x();onManual()};d.querySelector("#ac-s").onclick=function(){x();onScan()};
 }
+var LS_I="yees_inv_items";
+function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function splitSheet(r,cats,done){
+  var f=function(v){return Math.round(v*100)/100},learned=ld(LS_I),has=function(id){return cats.some(function(c){return c.id===id})};
+  var base=(r.cat&&has(r.cat))?r.cat:(has("shopping")?"shopping":cats[0].id);
+  var rows=r.items.map(function(x){var g=guess(x.name,[]);return{name:x.name,qty:x.qty,amt:f((x.qty||1)*(x.price||0)),cat:(learned[x.name]&&has(learned[x.name]))?learned[x.name]:(g&&has(g)?g:base)}});
+  var sum=rows.reduce(function(a,x){return a+x.amt},0),rem=f(r.total-sum),remRow=null,over=false;
+  if(rem>0.5)remRow={name:"其他／差額",qty:1,amt:rem,cat:base,rem:true};
+  else if(rem<-0.5){over=true;var big=rows.reduce(function(a,x){return x.amt>a.amt?x:a},rows[0]);big.amt=f(big.amt+rem)}
+  var mode="one",d=document.createElement("div");
+  var dark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,bg=dark?"#1c1c1e":"#f2f2f7",card=dark?"#2c2c2e":"#fff",fg=dark?"#fff":"#111",sub=dark?"#98989d":"#6c6c70",sep=dark?"#48484a":"#e5e5ea";
+  d.style.cssText="position:fixed;inset:0;z-index:99997;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center";
+  function all(){return remRow?rows.concat([remRow]):rows}
+  function render(){
+    var h='<div style="width:100%;max-width:520px;max-height:88vh;overflow:auto;background:'+bg+';color:'+fg+';border-radius:20px 20px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom) + 16px)">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><button id="sp-x" style="color:'+sub+';font-size:16px">取消</button><b style="font-size:16px">'+esc(r.name||("統編 "+r.seller))+' $'+f(r.total)+'</b><span style="width:32px"></span></div>';
+    h+='<div style="display:flex;background:'+sep+';border-radius:10px;padding:3px;margin-bottom:12px">'+[["one","一整筆"],["split","分項記帳"]].map(function(m){return'<button data-m="'+m[0]+'" style="flex:1;padding:7px;border-radius:8px;font-size:14px;font-weight:600;background:'+(mode===m[0]?card:"transparent")+';color:'+(mode===m[0]?fg:sub)+'">'+m[1]+'</button>'}).join("")+'</div>';
+    if(mode==="split"){
+      h+='<div style="background:'+card+';border-radius:14px;overflow:hidden">';
+      all().forEach(function(x,i){h+='<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;'+(i?'border-top:0.5px solid '+sep:'')+'"><div style="flex:1;min-width:0"><div style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.name)+(x.qty>1?' ×'+x.qty:'')+'</div><div style="font-size:12px;color:'+sub+'">$'+x.amt+'</div></div><select data-i="'+i+'" style="font-size:14px;padding:6px 8px;border-radius:8px;background:'+bg+';color:'+fg+';max-width:110px">'+cats.map(function(c){return'<option value="'+esc(c.id)+'"'+(c.id===x.cat?" selected":"")+'>'+esc(c.label)+'</option>'}).join("")+'</select></div>'});
+      h+='</div>';
+      if(over)h+='<div style="font-size:12px;color:'+sub+';margin-top:8px">品項合計超過發票總額（可能有折扣），已從最高金額的品項扣除差額。</div>';
+      h+='<div style="font-size:12px;color:'+sub+';margin-top:8px">同類別會合併成一筆紀錄；你修改的分類會被記住。</div>';
+    }else h+='<div style="font-size:13px;color:'+sub+';margin-bottom:4px">維持一整筆 $'+f(r.total)+'，備註會列出所有品項。</div>';
+    h+='<button id="sp-ok" style="width:100%;margin-top:14px;padding:14px;border-radius:14px;background:#007aff;color:#fff;font-size:16px;font-weight:600">'+(mode==="split"?"確定分項":"確定")+'</button></div>';
+    d.innerHTML=h;
+    d.querySelector("#sp-x").onclick=function(){d.remove()};
+    d.querySelectorAll("[data-m]").forEach(function(b){b.onclick=function(){mode=b.getAttribute("data-m");render()}});
+    d.querySelectorAll("select[data-i]").forEach(function(sl){sl.onchange=function(){all()[+sl.getAttribute("data-i")].cat=sl.value}});
+    d.querySelector("#sp-ok").onclick=ok;
+  }
+  function ok(){
+    if(mode==="one"){d.remove();done(r);return}
+    var a=ld(LS_I);rows.forEach(function(x){a[x.name]=x.cat});sv(LS_I,a);
+    var order=[],map={};all().forEach(function(x){if(!map[x.cat]){map[x.cat]={cat:x.cat,amount:0,rows:[]};order.push(x.cat)}map[x.cat].amount=f(map[x.cat].amount+x.amt);map[x.cat].rows.push(x)});
+    var groups=order.map(function(c){var g=map[c],nm=r.name||("統編 "+r.seller);var lines=[nm+" $"+g.amount];g.rows.forEach(function(x){lines.push(x.name+(x.qty>1?" ×"+x.qty:"")+" $"+x.amt)});return{cat:c,amount:g.amount,note:lines.join("\n")}});
+    d.remove();
+    if(groups.length===1){var one=Object.assign({},r,{cat:groups[0].cat,sub:null});done(one)}
+    else done(Object.assign({},r,{splits:groups}));
+  }
+  document.body.appendChild(d);render();
+}
 window.InvScan={note:note,choice:choice,
   parse:parse,
-  open:function(cb){overlay(function(r){var seen=ld(LS_N);if(seen[r.no]&&!window.confirm("發票 "+r.no+" 已經記過了，仍要繼續嗎？"))return;resolve(r).then(cb)})},
+  open:function(cb,cats,nosplit){overlay(function(r){var seen=ld(LS_N);if(seen[r.no]&&!window.confirm("發票 "+r.no+" 已經記過了，仍要繼續嗎？"))return;resolve(r).then(function(rr){if(nosplit||!cats||!cats.length||(rr.items||[]).length<2)cb(rr);else splitSheet(rr,cats,cb)})})},
   learn:function(s,cat,sub){if(!s||!s.seller)return;var a=ld(LS_S);a[s.seller]=Object.assign({},a[s.seller],{cat:cat||null,sub:sub||null});sv(LS_S,a);var n=ld(LS_N);if(s.no){n[s.no]=1;sv(LS_N,n)}}
 };
 })();
