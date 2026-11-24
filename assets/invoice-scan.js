@@ -81,14 +81,24 @@ function overlay(cb){
   else navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280}},audio:false}).then(function(s){stream=s;v.srcObject=s;v.play();loop()}).catch(function(){m.textContent="無法使用相機（請到設定允許相機），可改用右上角「相簿」選照片"});
 }
 function note(r){var l=[r.name||("統編 "+r.seller)];(r.items||[]).forEach(function(x){l.push(x.name+(x.qty>1?" ×"+x.qty:""))});return l.join("\n")}
+var lastBtn=null;
+document.addEventListener("pointerdown",function(e){var b=e.target&&e.target.closest&&e.target.closest("button");lastBtn=b?b.getBoundingClientRect():null},true);
 function choice(date,onManual,onScan){
-  var d=document.createElement("div");d.style.cssText="position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.35);display:flex;align-items:flex-end;justify-content:center";
-  var dark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,bg=dark?"#2c2c2e":"#fff",fg=dark?"#fff":"#111",sep=dark?"#444":"#e5e5ea";
-  d.innerHTML='<div style="width:100%;max-width:480px;padding:12px 12px calc(env(safe-area-inset-bottom) + 12px)"><div style="background:'+bg+';border-radius:16px;overflow:hidden"><button id="ac-m" style="width:100%;padding:16px;font-size:16px;color:'+fg+';border-bottom:0.5px solid '+sep+'">手動輸入</button><button id="ac-s" style="width:100%;padding:16px;font-size:16px;color:'+fg+'">掃描發票</button></div><button id="ac-c" style="width:100%;margin-top:8px;padding:16px;font-size:16px;font-weight:600;background:'+bg+';color:#007aff;border-radius:16px">取消</button></div>';
+  var r=lastBtn,W=window.innerWidth,H=window.innerHeight,mw=210;
+  var dark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,bg=dark?"rgba(44,44,46,.92)":"rgba(255,255,255,.94)",fg=dark?"#fff":"#111",sep=dark?"#48484a":"#e5e5ea";
+  var d=document.createElement("div");d.style.cssText="position:fixed;inset:0;z-index:99998";
+  var pos;
+  if(r){var left=Math.max(12,Math.min(W-mw-12,r.right-mw)),below=r.top<H/2;
+    pos="left:"+left+"px;"+(below?"top:"+(r.bottom+8)+"px":"bottom:"+(H-r.top+8)+"px");}
+  else pos="left:"+(W-mw-12)+"px;top:calc(env(safe-area-inset-top) + 56px)";
+  var qr='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+fg+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="3.5" height="3.5"/><rect x="13.5" y="7" width="3.5" height="3.5"/><rect x="7" y="13.5" width="3.5" height="3.5"/><path d="M13.5 13.5h3.5v3.5"/></svg>';
+  var pen='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="'+fg+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2 2 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>';
+  var row='display:flex;align-items:center;gap:14px;width:100%;padding:15px 18px;font-size:17px;color:'+fg+';text-align:left';
+  d.innerHTML='<div style="position:absolute;'+pos+';width:'+mw+'px;background:'+bg+';-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-radius:22px;box-shadow:0 8px 30px rgba(0,0,0,.18);overflow:hidden"><button id="ac-s" style="'+row+';border-bottom:0.5px solid '+sep+'">'+qr+'<span>掃發票 QR Code</span></button><button id="ac-m" style="'+row+'">'+pen+'<span>手動新增</span></button></div>';
   document.body.appendChild(d);
   function x(){d.remove()}
   d.onclick=function(e){if(e.target===d)x()};
-  d.querySelector("#ac-c").onclick=x;d.querySelector("#ac-m").onclick=function(){x();onManual()};d.querySelector("#ac-s").onclick=function(){x();onScan()};
+  d.querySelector("#ac-m").onclick=function(){x();onManual()};d.querySelector("#ac-s").onclick=function(){x();onScan()};
 }
 window.InvScan={note:note,choice:choice,
   parse:parse,
