@@ -105,9 +105,10 @@ function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{"&":"&amp;
 function splitSheet(r,cats,done){
   var f=function(v){return Math.round(v*100)/100},learned=ld(LS_I),has=function(id){return cats.some(function(c){return c.id===id})};
   var base=(r.cat&&has(r.cat))?r.cat:(has("shopping")?"shopping":cats[0].id);
-  var rows=r.items.map(function(x){var g=guess(x.name,[]);return{name:x.name,qty:x.qty,amt:f((x.qty||1)*(x.price||0)),cat:(learned[x.name]&&has(learned[x.name]))?learned[x.name]:(g&&has(g)?g:base)}});
+  var subsOf=function(id){var c=cats.filter(function(c){return c.id===id})[0];return(c&&c.subs)||[]},hasSub=function(id,sb){return subsOf(id).some(function(z){return z.id===sb})};
+  var rows=r.items.map(function(x){var g=guess(x.name,[]),l=learned[x.name],lc=typeof l==="string"?l:(l&&l.cat),ls=l&&typeof l==="object"?l.sub:null,cat=(lc&&has(lc))?lc:(g&&has(g)?g:base);return{name:x.name,qty:x.qty,amt:f((x.qty||1)*(x.price||0)),cat:cat,sub:(cat===lc&&ls&&hasSub(cat,ls))?ls:null}});
   var sum=rows.reduce(function(a,x){return a+x.amt},0),rem=f(r.total-sum),remRow=null,over=false;
-  if(rem>0.5)remRow={name:"其他／差額",qty:1,amt:rem,cat:base,rem:true};
+  if(rem>0.5)remRow={name:"其他／差額",qty:1,amt:rem,cat:base,sub:null,rem:true};
   else if(rem<-0.5){over=true;var big=rows.reduce(function(a,x){return x.amt>a.amt?x:a},rows[0]);big.amt=f(big.amt+rem)}
   var mode="one",d=document.createElement("div");
   var dark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,bg=dark?"#1c1c1e":"#f2f2f7",card=dark?"#2c2c2e":"#fff",fg=dark?"#fff":"#111",sub=dark?"#98989d":"#6c6c70",sep=dark?"#48484a":"#e5e5ea";
@@ -119,7 +120,7 @@ function splitSheet(r,cats,done){
     h+='<div style="display:flex;background:'+sep+';border-radius:10px;padding:3px;margin-bottom:12px">'+[["one","一整筆"],["split","分項記帳"]].map(function(m){return'<button data-m="'+m[0]+'" style="flex:1;padding:7px;border-radius:8px;font-size:14px;font-weight:600;background:'+(mode===m[0]?card:"transparent")+';color:'+(mode===m[0]?fg:sub)+'">'+m[1]+'</button>'}).join("")+'</div>';
     if(mode==="split"){
       h+='<div style="background:'+card+';border-radius:14px;overflow:hidden">';
-      all().forEach(function(x,i){h+='<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;'+(i?'border-top:0.5px solid '+sep:'')+'"><div style="flex:1;min-width:0"><div style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.name)+(x.qty>1?' ×'+x.qty:'')+'</div><div style="font-size:12px;color:'+sub+'">$'+x.amt+'</div></div><select data-i="'+i+'" style="font-size:14px;padding:6px 8px;border-radius:8px;background:'+bg+';color:'+fg+';max-width:110px">'+cats.map(function(c){return'<option value="'+esc(c.id)+'"'+(c.id===x.cat?" selected":"")+'>'+esc(c.label)+'</option>'}).join("")+'</select></div>'});
+      all().forEach(function(x,i){h+='<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;'+(i?'border-top:0.5px solid '+sep:'')+'"><div style="flex:1;min-width:0"><div style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.name)+(x.qty>1?' ×'+x.qty:'')+'</div><div style="font-size:12px;color:'+sub+'">$'+x.amt+'</div></div><div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><select data-i="'+i+'" style="font-size:14px;padding:6px 8px;border-radius:8px;background:'+bg+';color:'+fg+';max-width:120px">'+cats.map(function(c){return'<option value="'+esc(c.id)+'"'+(c.id===x.cat?" selected":"")+'>'+esc(c.label)+'</option>'}).join("")+'</select>'+(subsOf(x.cat).length?'<select data-s="'+i+'" style="font-size:13px;padding:5px 8px;border-radius:8px;background:'+bg+';color:'+sub+';max-width:120px"><option value="">不分子類</option>'+subsOf(x.cat).map(function(z){return'<option value="'+esc(z.id)+'"'+(z.id===x.sub?" selected":"")+'>'+esc(z.label)+'</option>'}).join("")+'</select>':'')+'</div></div>'});
       h+='</div>';
       if(over)h+='<div style="font-size:12px;color:'+sub+';margin-top:8px">品項合計超過發票總額（可能有折扣），已從最高金額的品項扣除差額。</div>';
       h+='<div style="font-size:12px;color:'+sub+';margin-top:8px">同類別會合併成一筆紀錄；你修改的分類會被記住。</div>';
@@ -128,16 +129,17 @@ function splitSheet(r,cats,done){
     d.innerHTML=h;
     d.querySelector("#sp-x").onclick=function(){d.remove()};
     d.querySelectorAll("[data-m]").forEach(function(b){b.onclick=function(){mode=b.getAttribute("data-m");render()}});
-    d.querySelectorAll("select[data-i]").forEach(function(sl){sl.onchange=function(){all()[+sl.getAttribute("data-i")].cat=sl.value}});
+    d.querySelectorAll("select[data-i]").forEach(function(sl){sl.onchange=function(){var x=all()[+sl.getAttribute("data-i")];x.cat=sl.value;x.sub=null;render()}});
+    d.querySelectorAll("select[data-s]").forEach(function(sl){sl.onchange=function(){all()[+sl.getAttribute("data-s")].sub=sl.value||null}});
     d.querySelector("#sp-ok").onclick=ok;
   }
   function ok(){
     if(mode==="one"){d.remove();done(r);return}
-    var a=ld(LS_I);rows.forEach(function(x){a[x.name]=x.cat});sv(LS_I,a);
-    var order=[],map={};all().forEach(function(x){if(!map[x.cat]){map[x.cat]={cat:x.cat,amount:0,rows:[]};order.push(x.cat)}map[x.cat].amount=f(map[x.cat].amount+x.amt);map[x.cat].rows.push(x)});
-    var groups=order.map(function(c){var g=map[c],nm=r.name||("統編 "+r.seller);var lines=[nm+" $"+g.amount];g.rows.forEach(function(x){lines.push(x.name+(x.qty>1?" ×"+x.qty:"")+" $"+x.amt)});return{cat:c,amount:g.amount,note:lines.join("\n")}});
+    var a=ld(LS_I);rows.forEach(function(x){a[x.name]={cat:x.cat,sub:x.sub||null}});sv(LS_I,a);
+    var order=[],map={};all().forEach(function(x){var k=x.cat+"|"+(x.sub||"");if(!map[k]){map[k]={cat:x.cat,sub:x.sub||null,amount:0,rows:[]};order.push(k)}map[k].amount=f(map[k].amount+x.amt);map[k].rows.push(x)});
+    var groups=order.map(function(c){var g=map[c],nm=r.name||("統編 "+r.seller);var lines=[nm+" $"+g.amount];g.rows.forEach(function(x){lines.push(x.name+(x.qty>1?" ×"+x.qty:"")+" $"+x.amt)});return{cat:g.cat,sub:g.sub,amount:g.amount,note:lines.join("\n")}});
     d.remove();
-    if(groups.length===1){var one=Object.assign({},r,{cat:groups[0].cat,sub:null});done(one)}
+    if(groups.length===1){var one=Object.assign({},r,{cat:groups[0].cat,sub:groups[0].sub});done(one)}
     else done(Object.assign({},r,{splits:groups}));
   }
   document.body.appendChild(d);render();
